@@ -130,7 +130,7 @@ try:
     d3m = 90;  df['Savings 3m'] = df['Savings'].rolling(d3m).mean()
     d1y = 366; df['Savings 1y'] = df['Savings'].rolling(d1y).mean()
     b, a = signal.butter(2, 0.004)
-    df['Savings Butterworth'] = signal.filtfilt(b, a, df['Savings'], padlen = 300)
+    df['Savings Butterworth'] = signal.filtfilt(b, a, df['Savings'], padlen = 600)
     # df['Savings Butterworth'] = signal.lfilter(b, a, df['Savings'])
     # print(df)
     total_savings = list(df['Savings'])[-1]
@@ -150,6 +150,7 @@ try:
     plt.gca().yaxis.set_minor_locator(matplotlib.ticker.AutoMinorLocator(5))
     plt.grid()
     plt.grid(which = 'minor', linestyle = '--', alpha = 0.5)
+    plt.gcf().set_dpi(100)
     plt.show()
 
     # plt.plot_date(dateconv(df['Timestamp']), df['Savings 1m'].diff(), 'r-')
@@ -161,6 +162,7 @@ try:
     plt.gca().yaxis.set_minor_locator(matplotlib.ticker.AutoMinorLocator(5))
     plt.grid()
     plt.grid(which = 'minor', linestyle = '--', alpha = 0.5)
+    plt.gcf().set_dpi(100)
     plt.show()
 
 ## -------- SOMETHING WENT WRONG -----------------------------	

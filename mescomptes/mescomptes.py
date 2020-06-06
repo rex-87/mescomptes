@@ -88,7 +88,7 @@ try:
     df = MergedLloydsDf[~MergedLloydsDf['Transaction Description'].str.contains('R THIBAULT')].sort_values(by = 'Timestamp')
     df = df[~df['Transaction Description'].str.contains('TO 77490187689860')].sort_values(by = 'Timestamp') # (£1 paid to ISA account)
     
-    current_balance = list(MergedLloydsDf['Balance'])[-1]
+    lloyds_current_balance = list(MergedLloydsDf['Balance'])[-1]
     # df = MergedLloydsDf.sort_values(by = 'Timestamp')                                            
 
     tl = list(set(df[df.duplicated(subset='Timestamp', keep = False)]['Timestamp']))
@@ -133,9 +133,23 @@ try:
     df['Savings Butterworth'] = signal.filtfilt(b, a, df['Savings'], padlen = 600)
     # df['Savings Butterworth'] = signal.lfilter(b, a, df['Savings'])
     # print(df)
-    total_savings = list(df['Savings'])[-1]
-    isa_balance = total_savings - current_balance
-    print("£{:.2f} (£{:.2f} + £{:.2f})".format(total_savings, current_balance, isa_balance))
+    lloyds_total_savings = list(df['Savings'])[-1]
+    isa_balance = lloyds_total_savings - lloyds_current_balance
+    
+    CIC_courant_df = pd.read_csv(os.path.join(this_file_dir, r'..\raw\CIC\cic_courant.csv'))
+    CIC_livretA_df = pd.read_csv(os.path.join(this_file_dir, r'..\raw\CIC\cic_livretA.csv'))
+    def get_eur_balance(eur_df):
+        
+        bal_eur = eur_df.iloc[-1]['Balance']
+        bal_gbp = int(eur_df.iloc[-1]['Balance']*100/eur_df.iloc[-1]['gbp/eur rate'])/100
+        
+        return bal_eur, bal_gbp, eur_df.iloc[-1]['gbp/eur rate']
+    cic_courant_eur, cic_courant_gbp, gbp_eur_rate = get_eur_balance(CIC_courant_df)
+    cic_livretA_eur, cic_livretA_gbp, gbp_eur_rate = get_eur_balance(CIC_livretA_df)
+    
+    print("LLoyds: £{:.2f} (£{:.2f} + £{:.2f} = {:.2f}€)".format(lloyds_total_savings, lloyds_current_balance, isa_balance, lloyds_total_savings*gbp_eur_rate))
+    print("CIC: {:.2f}€ ({:.2f}€ + {:.2f}€) = £{:.2f}".format(cic_courant_eur+cic_livretA_eur, cic_courant_eur, cic_livretA_eur, cic_courant_gbp+cic_livretA_gbp))
+    print("Total: £{:.2f} = {:.2f}€)".format(lloyds_total_savings+cic_courant_gbp+cic_livretA_gbp, cic_courant_eur+cic_livretA_eur+lloyds_total_savings*gbp_eur_rate))
 
     # save processed lloyds csv
     ProcLloydsCsvPath = os.path.join(this_file_dir, r'..\proc\Lloyds_proc.csv')

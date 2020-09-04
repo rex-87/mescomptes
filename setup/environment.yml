@@ -1,6 +1,7 @@
 name: mescomptes_env
 channels:
   - anaconda
+  - conda-forge
   - defaults
 dependencies:
   - backcall=0.1.0=py37_0
@@ -11,8 +12,7 @@ dependencies:
   - ipython=7.13.0=py37h5ca1d4c_0
   - ipython_genutils=0.2.0=py37_0
   - jedi=0.16.0=py37_1
-  - nomkl=2.0=0
-  - openssl=1.1.1=he774522_0
+  - openssl=1.1.1g=he774522_1
   - parso=0.6.2=py_0
   - pickleshare=0.7.5=py37_0
   - pip=20.0.2=py37_1
@@ -39,5 +39,5 @@ dependencies:
     - python-dateutil==2.8.1
     - pytz==2019.3
     - scipy==1.4.1
-prefix: C:\Users\rex87\miniconda3_64\envs\mescomptes_env
+prefix: C:\Users\romain.thibault\miniconda3_64\envs\mescomptes_env
 

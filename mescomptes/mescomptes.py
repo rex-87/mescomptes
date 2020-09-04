@@ -28,6 +28,8 @@ try:
 	## THE MAIN PROGRAM STARTS HERE
 	## -------------------------------------------------------	
 
+    LOG.info("imports ...")
+
     import os
     import pandas as pd
     import datetime
@@ -41,7 +43,7 @@ try:
 
     this_file_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # search for Lloyds csv files
+    LOG.info("search for Lloyds csv files...")
     CsvPathList = []
     csv_dir = os.path.join(this_file_dir, r'..\raw\Lloyds') 
     for root, dirs, files in os.walk(csv_dir):
@@ -50,6 +52,7 @@ try:
                 CsvPathList.append(os.path.join(root, name))
 
     # merge Lloyds csv files
+    LOG.info("merge Lloyds csv files...")
     MergedLloydsCsvPath = os.path.join(this_file_dir, r'..\proc\Lloyds_merged.csv')
     with open(MergedLloydsCsvPath, 'w') as fout:
         
@@ -71,26 +74,27 @@ try:
                     # ... and copy it to the output file
                     fout.write(fin_line)
 
-    # read merged lloyds csv
+    LOG.info("read merged lloyds csv...")
     MergedLloydsDf = pd.read_csv(MergedLloydsCsvPath)
 
-    # append timestamp column
+    LOG.info("append timestamp column...")
     TimestampDf = pd.DataFrame(
         { 'Timestamp' : [ datetime.datetime.strptime(DateStr, "%d/%m/%Y").timestamp() for DateStr in MergedLloydsDf['Transaction Date']] },
     )
     MergedLloydsDf = MergedLloydsDf.join(TimestampDf)
     MergedLloydsDf = MergedLloydsDf.sort_values(by = 'Timestamp') 
 
+    fromtimestamp = datetime.datetime.fromtimestamp
+    dateconv = np.vectorize(fromtimestamp)
     
-    dateconv = np.vectorize(datetime.datetime.fromtimestamp)
-    
-    # remove transfers to ISA
+    LOG.info("remove transfers to ISA...")
     df = MergedLloydsDf[~MergedLloydsDf['Transaction Description'].str.contains('R THIBAULT')].sort_values(by = 'Timestamp')
     df = df[~df['Transaction Description'].str.contains('TO 77490187689860')].sort_values(by = 'Timestamp') # (£1 paid to ISA account)
     
     lloyds_current_balance = list(MergedLloydsDf['Balance'])[-1]
     # df = MergedLloydsDf.sort_values(by = 'Timestamp')                                            
 
+    LOG.info("sum transactions which occurred on the same day...")
     tl = list(set(df[df.duplicated(subset='Timestamp', keep = False)]['Timestamp']))
     new_entries_df = pd.DataFrame(columns = df.columns)
     for t in tl:
@@ -98,37 +102,38 @@ try:
         new_entry_ser['Timestamp'] = t
         new_entries_df = new_entries_df.append(new_entry_ser, ignore_index = True)
         df = df[df['Timestamp'] != t]
-
     df = df.append(new_entries_df)
     df = df.sort_values(by = 'Timestamp').reset_index()
 
-    dfd = copy.copy(df['Timestamp'].diff()[1:])
-    dfd = copy.copy(dfd[dfd != 86400])
+    LOG.info("populate missing days...")
+    # dfd = copy.copy(df['Timestamp'].diff()[1:])
+    # dfd = copy.copy(dfd[dfd != 86400])
+    # for i in dfd.index:
+    #     new_entry_ser = copy.copy(df.loc[i])
+    #     missing_days_count = int(dfd.loc[i]/86400 - 1)
+    #     # print(i, missing_days_count)
+    #     for j in range(missing_days_count):
+    #         new_entry_ser = copy.copy(new_entry_ser)
+    #         new_entry_ser['Debit Amount'] = 0
+    #         new_entry_ser['Credit Amount'] = 0
+    #         new_entry_ser['Timestamp'] = new_entry_ser['Timestamp'] - 86400
+    #         df = df.append(new_entry_ser)
+    # df = df.sort_values(by = 'Timestamp').reset_index()
+    
+    timestamp_dr = pd.date_range(fromtimestamp(df['Timestamp'].iloc[0]), fromtimestamp(df['Timestamp'].iloc[-1]))
+    df.index = dateconv(df['Timestamp'])
+    df = df.reindex(timestamp_dr, fill_value=0)
 
-    for i in dfd.index:
-        new_entry_ser = copy.copy(df.loc[i])
-        missing_days_count = int(dfd.loc[i]/86400 - 1)
-        # print(i, missing_days_count)
-        for j in range(missing_days_count):
-            new_entry_ser = copy.copy(new_entry_ser)
-            new_entry_ser['Debit Amount'] = 0
-            new_entry_ser['Credit Amount'] = 0
-            new_entry_ser['Timestamp'] = new_entry_ser['Timestamp'] - 86400
-            df = df.append(new_entry_ser)
-
-    df = df.sort_values(by = 'Timestamp').reset_index()
-    # print(df['Timestamp'][0:10])
-    # print(df['Timestamp'].diff()[0:10])
-    # import pdb; pdb.set_trace()
-
+    LOG.info("calculate rolling averages...")
+    
     def GetSavingsDelta(deb, cre):
         return cre - deb
 
     df['Savings Delta'] = GetSavingsDelta(df['Debit Amount'].fillna(0), df['Credit Amount'].fillna(0))
     df['Savings'] = np.cumsum(df['Savings Delta'])
-    d1m = 30;  df['Savings 1m'] = df['Savings'].rolling(d1m).mean()
-    d3m = 90;  df['Savings 3m'] = df['Savings'].rolling(d3m).mean()
-    d1y = 366; df['Savings 1y'] = df['Savings'].rolling(d1y).mean()
+    d1m = 31;  df['Savings 1m'] = df['Savings'].rolling(d1m, center = True).mean()
+    d3m = 91;  df['Savings 3m'] = df['Savings'].rolling(d3m, center = True).mean()
+    d1y = 365; df['Savings 1y'] = df['Savings'].rolling(d1y, center = True).mean();
     b, a = signal.butter(2, 0.004)
     df['Savings Butterworth'] = signal.filtfilt(b, a, df['Savings'], padlen = 600)
     # df['Savings Butterworth'] = signal.lfilter(b, a, df['Savings'])
@@ -147,19 +152,20 @@ try:
     cic_courant_eur, cic_courant_gbp, gbp_eur_rate = get_eur_balance(CIC_courant_df)
     cic_livretA_eur, cic_livretA_gbp, gbp_eur_rate = get_eur_balance(CIC_livretA_df)
     
-    print("LLoyds: £{:.2f} (£{:.2f} + £{:.2f} = {:.2f}€)".format(lloyds_total_savings, lloyds_current_balance, isa_balance, lloyds_total_savings*gbp_eur_rate))
-    print("CIC: {:.2f}€ ({:.2f}€ + {:.2f}€) = £{:.2f}".format(cic_courant_eur+cic_livretA_eur, cic_courant_eur, cic_livretA_eur, cic_courant_gbp+cic_livretA_gbp))
-    print("Total: £{:.2f} = {:.2f}€)".format(lloyds_total_savings+cic_courant_gbp+cic_livretA_gbp, cic_courant_eur+cic_livretA_eur+lloyds_total_savings*gbp_eur_rate))
+    LOG.info("LLoyds: £{:.2f} (£{:.2f} + £{:.2f} = {:.2f}€)".format(lloyds_total_savings, lloyds_current_balance, isa_balance, lloyds_total_savings*gbp_eur_rate))
+    LOG.info("CIC: {:.2f}€ ({:.2f}€ + {:.2f}€) = £{:.2f}".format(cic_courant_eur+cic_livretA_eur, cic_courant_eur, cic_livretA_eur, cic_courant_gbp+cic_livretA_gbp))
+    LOG.info("Total: £{:.2f} = {:.2f}€)".format(lloyds_total_savings+cic_courant_gbp+cic_livretA_gbp, cic_courant_eur+cic_livretA_eur+lloyds_total_savings*gbp_eur_rate))
 
-    # save processed lloyds csv
+    LOG.info("save processed lloyds csv...")
     ProcLloydsCsvPath = os.path.join(this_file_dir, r'..\proc\Lloyds_proc.csv')
     df.to_csv(path_or_buf = ProcLloydsCsvPath)
 
-    plt.plot_date(dateconv(df['Timestamp']), df['Savings'], 'k.', markersize = 1,)
-    plt.plot_date(dateconv(df['Timestamp'][:-d1m//2]), df['Savings 1m'][d1m//2:], 'y-')
-    plt.plot_date(dateconv(df['Timestamp'][:-d3m//2]), df['Savings 3m'][d3m//2:], 'g-')
-    plt.plot_date(dateconv(df['Timestamp'][:-d1y//2]), df['Savings 1y'][d1y//2:], 'b-')
-    plt.plot_date(dateconv(df['Timestamp']), df['Savings Butterworth'], 'r-')
+    LOG.info("PLOT...")
+    plt.plot_date(df.index, df['Savings'], 'k.', markersize = 1,)
+    plt.plot_date(df.index, df['Savings 1m'], 'y-')
+    plt.plot_date(df.index, df['Savings 3m'], 'g-')
+    plt.plot_date(df.index, df['Savings 1y'], 'b-')
+    # plt.plot_date(dateconv(df['Timestamp']), df['Savings Butterworth'], 'r-')
     plt.gca().xaxis.set_minor_locator(matplotlib.ticker.AutoMinorLocator(12))
     plt.gca().yaxis.set_minor_locator(matplotlib.ticker.AutoMinorLocator(5))
     plt.grid()
@@ -167,11 +173,11 @@ try:
     plt.gcf().set_dpi(100)
     plt.show()
 
-    # plt.plot_date(dateconv(df['Timestamp']), df['Savings 1m'].diff(), 'r-')
-    # plt.plot_date(dateconv(df['Timestamp']), df['Savings 3m'].diff(), 'g-')
-    # plt.plot_date(dateconv(df['Timestamp']), df['Savings'].diff(), 'r-')
-    plt.plot_date(dateconv(df['Timestamp'][:-d1y//2]), df['Savings 1y'][d1y//2:].diff(), 'b-')
-    plt.plot_date(dateconv(df['Timestamp']), df['Savings Butterworth'].diff(), 'r-')
+    plt.plot_date(df.index, df['Savings'].diff(), 'k.', markersize = 1,)
+    plt.plot_date(df.index, df['Savings 1m'].diff(), 'y-')
+    plt.plot_date(df.index, df['Savings 3m'].diff(), 'g-')
+    plt.plot_date(df.index, df['Savings 1y'].diff(), 'b-')
+    # plt.plot_date(dateconv(df['Timestamp']), df['Savings Butterworth'].diff(), 'r-')
     plt.gca().xaxis.set_minor_locator(matplotlib.ticker.AutoMinorLocator(12))
     plt.gca().yaxis.set_minor_locator(matplotlib.ticker.AutoMinorLocator(5))
     plt.grid()
@@ -188,4 +194,5 @@ except:
 ## -------- GIVE THE USER A CHANCE TO READ MESSAGES-----------
 finally:
 	
-	input("Press any key to exit ...")
+	pass
+    # input("Press any key to exit ...")

@@ -39,7 +39,7 @@ try:
     import numpy as np
     import datetime
     import copy
-    from scipy import signal
+    # from scipy import signal
 
     this_file_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -95,31 +95,9 @@ try:
     # df = MergedLloydsDf.sort_values(by = 'Timestamp')                                            
 
     LOG.info("sum transactions which occurred on the same day...")
-    tl = list(set(df[df.duplicated(subset='Timestamp', keep = False)]['Timestamp']))
-    new_entries_df = pd.DataFrame(columns = df.columns)
-    for t in tl:
-        new_entry_ser = df[df['Timestamp'] == t][['Debit Amount', 'Credit Amount']].sum()
-        new_entry_ser['Timestamp'] = t
-        new_entries_df = new_entries_df.append(new_entry_ser, ignore_index = True)
-        df = df[df['Timestamp'] != t]
-    df = df.append(new_entries_df)
-    df = df.sort_values(by = 'Timestamp').reset_index()
+    df = df.groupby(['Timestamp'], as_index = False).sum()
 
     LOG.info("populate missing days...")
-    # dfd = copy.copy(df['Timestamp'].diff()[1:])
-    # dfd = copy.copy(dfd[dfd != 86400])
-    # for i in dfd.index:
-    #     new_entry_ser = copy.copy(df.loc[i])
-    #     missing_days_count = int(dfd.loc[i]/86400 - 1)
-    #     # print(i, missing_days_count)
-    #     for j in range(missing_days_count):
-    #         new_entry_ser = copy.copy(new_entry_ser)
-    #         new_entry_ser['Debit Amount'] = 0
-    #         new_entry_ser['Credit Amount'] = 0
-    #         new_entry_ser['Timestamp'] = new_entry_ser['Timestamp'] - 86400
-    #         df = df.append(new_entry_ser)
-    # df = df.sort_values(by = 'Timestamp').reset_index()
-    
     timestamp_dr = pd.date_range(fromtimestamp(df['Timestamp'].iloc[0]), fromtimestamp(df['Timestamp'].iloc[-1]))
     df.index = dateconv(df['Timestamp'])
     df = df.reindex(timestamp_dr, fill_value=0)
@@ -134,10 +112,9 @@ try:
     d1m = 31;  df['Savings 1m'] = df['Savings'].rolling(d1m, center = True).mean()
     d3m = 91;  df['Savings 3m'] = df['Savings'].rolling(d3m, center = True).mean()
     d1y = 365; df['Savings 1y'] = df['Savings'].rolling(d1y, center = True).mean();
-    b, a = signal.butter(2, 0.004)
-    df['Savings Butterworth'] = signal.filtfilt(b, a, df['Savings'], padlen = 600)
+    # b, a = signal.butter(2, 0.004)
+    # df['Savings Butterworth'] = signal.filtfilt(b, a, df['Savings'], padlen = 600)
     # df['Savings Butterworth'] = signal.lfilter(b, a, df['Savings'])
-    # print(df)
     lloyds_total_savings = list(df['Savings'])[-1]
     isa_balance = lloyds_total_savings - lloyds_current_balance
     
@@ -165,7 +142,7 @@ try:
     plt.plot_date(df.index, df['Savings 1m'], 'y-')
     plt.plot_date(df.index, df['Savings 3m'], 'g-')
     plt.plot_date(df.index, df['Savings 1y'], 'b-')
-    # plt.plot_date(dateconv(df['Timestamp']), df['Savings Butterworth'], 'r-')
+    # plt.plot_date(df.index, df['Savings Butterworth'], 'r-')
     plt.gca().xaxis.set_minor_locator(matplotlib.ticker.AutoMinorLocator(12))
     plt.gca().yaxis.set_minor_locator(matplotlib.ticker.AutoMinorLocator(5))
     plt.grid()
@@ -177,7 +154,7 @@ try:
     plt.plot_date(df.index, df['Savings 1m'].diff(), 'y-')
     plt.plot_date(df.index, df['Savings 3m'].diff(), 'g-')
     plt.plot_date(df.index, df['Savings 1y'].diff(), 'b-')
-    # plt.plot_date(dateconv(df['Timestamp']), df['Savings Butterworth'].diff(), 'r-')
+    # plt.plot_date(df.index, df['Savings Butterworth'].diff(), 'r-')
     plt.gca().xaxis.set_minor_locator(matplotlib.ticker.AutoMinorLocator(12))
     plt.gca().yaxis.set_minor_locator(matplotlib.ticker.AutoMinorLocator(5))
     plt.grid()
